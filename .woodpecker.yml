@@ -5,27 +5,41 @@ steps:
       event: 
         - push
         - tag
+    environment:
+      - PRJ=uconsole-ext-usb-hub
+      - LAYERS=2
+      - IHB_VERSION=v2.7.0
     commands:
       - apt-get update
-      - DEBIAN_FRONTEND=noninteractive apt-get install -qq -y software-properties-common nodejs git zip
+      - DEBIAN_FRONTEND=noninteractive apt-get install -qq -y software-properties-common nodejs git zip wget
       - add-apt-repository --yes ppa:kicad/kicad-7.0-releases
       - apt-get update
       - DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -qq -y kicad
-      - mkdir artifacts
-      - cd artifacts
-      - kicad-cli sch export pdf ../pcb/uconsole-ext-usb-hub.kicad_sch
-      - kicad-cli pcb export gerber --layers "F.Cu" --output uconsole-ext-usb-hub-F_Cu.gtl ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "B.Cu" --output uconsole-ext-usb-hub-B_Cu.gbl ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "F.Paste" --output uconsole-ext-usb-hub-F_Paste.gtp ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "B.Paste" --output uconsole-ext-usb-hub-B_Paste.gbp ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "F.Silkscreen" --output uconsole-ext-usb-hub-F_Silkscreen.gto ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "B.Silkscreen" --output uconsole-ext-usb-hub-B.Silscreen.gbo ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "F.Mask" --output uconsole-ext-usb-hub-F_Mask.gts ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "B.Mask" --output uconsole-ext-usb-hub-B_Mask.gbs ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export gerber --layers "Edge.Cuts" --output uconsole-ext-usb-hub-Edge_Cuts.gm1 ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - kicad-cli pcb export drill --excellon-separate-th ../pcb/uconsole-ext-usb-hub.kicad_pcb
-      - zip uconsole-ext-usb-hub-gerber.zip *.g* *.drl
+      - mkdir artifacts && cd artifacts
+      - kicad-cli sch export pdf ../pcb/$PRJ.kicad_sch
+      # Generate Gerbers and drills
+      - kicad-cli pcb export gerber --layers "F.Cu" --output $PRJ-F_Cu.gtl ../pcb/$PRJ.kicad_pcb
+      - if [ "$LAYERS" -eq 4 ]; then kicad-cli pcb export gerber --layers "In1.Cu" --output $PRJ-In1_Cu.g2 ../pcb/$PRJ.kicad_pcb; fi
+      - if [ "$LAYERS" -eq 4 ]; then kicad-cli pcb export gerber --layers "In2.Cu" --output $PRJ-In2_Cu.g3 ../pcb/$PRJ.kicad_pcb; fi
+      - kicad-cli pcb export gerber --layers "B.Cu" --output $PRJ-B_Cu.gbl ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "F.Paste" --output $PRJ-F_Paste.gtp ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "B.Paste" --output $PRJ-B_Paste.gbp ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "F.Silkscreen" --output $PRJ-F_Silkscreen.gto ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "B.Silkscreen" --output $PRJ-B.Silscreen.gbo ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "F.Mask" --output $PRJ-F_Mask.gts ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "B.Mask" --output $PRJ-B_Mask.gbs ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export gerber --layers "Edge.Cuts" --output $PRJ-Edge_Cuts.gm1 ../pcb/$PRJ.kicad_pcb
+      - kicad-cli pcb export drill --excellon-separate-th ../pcb/$PRJ.kicad_pcb
+      - zip $PRJ-gerber.zip *.g* *.drl
       - rm *.g* *.drl
+      # Generate BOM
+      - kicad-cli sch export python-bom -o $PRJ-bom.xml ../pcb/$PRJ.kicad_sch
+      - /usr/bin/python3 /usr/share/kicad/plugins/bom_csv_grouped_by_value_with_fp.py ./$PRJ-bom.xml ./$PRJ-bom.csv
+      - rm ./$PRJ-bom.xml
+      # Generate InteractiveHtmlBom
+      - wget https://github.com/openscopeproject/InteractiveHtmlBom/releases/download/$IHB_VERSION/InteractiveHtmlBom.zip -P /tmp
+      - unzip /tmp/InteractiveHtmlBom.zip -d /tmp
+      - INTERACTIVE_HTML_BOM_NO_DISPLAY=1 python3 /tmp/InteractiveHtmlBom/generate_interactive_bom.py --no-browser --dest-dir ../artifacts --name-format $PRJ ../pcb/$PRJ.kicad_pcb
 
   publish_release:
     image: woodpeckerci/plugin-gitea-release
